@@ -6,18 +6,39 @@ to make it easier to find those jokers you want to sell/replace
 
 Change history:
 Updated 2026-04-06 Depend on Cartomancer and append four filter pills to Control Row: All Slot Neg Extra
+Updated 2026-04-06 Fixed Slot to exclude Neg+Extra, added Temp and OnSell pill filters.
 
 Future ideas:
 - Add pills for Eternal/Absolute Rental/Expiring
 - Add pills for economy mult xmult 
 - Add pill for bad to find destructive jokers like Arsonist 
+- Sorting?
+
+This version depends on Cartomancer and appends filter pills into
+Cartomancer's joker control row:
+
+- All
+- Slot
+- Neg
+- Extra
+- Temp
+- OnSell
 
 Definitions
 -----------
-All   = every joker
-Slot  = jokers that take a normal slot (not Negative, not Extra)
-Neg   = jokers with Negative
-Extra = jokers with an extra-slot property
+All    = every joker
+Slot   = jokers that take a normal slot (not Negative, not Extra)
+Neg    = jokers with Negative
+Extra  = jokers with an extra-slot property
+Temp   = jokers that are Rental, Expiring/Perishable, or Mr. Bones
+OnSell = jokers that have a sell-trigger style effect
+
+Notes
+-----
+- Neg and Extra are not exclusive buckets.
+- Slot is the practical "replace/sell candidate" bucket.
+- Popup feedback and joker-count banners are intentionally removed.
+- Visual feedback is now the active pill state plus the count on each pill.
 ]]
 
 ----------------------------------------------------------------
@@ -51,6 +72,8 @@ local FILTER_LABELS = {
     slot = "Slot",
     negative = "Neg",
     extra = "Extra",
+    temp = "Temp",
+    onsell = "OnSell",
 }
 
 local JF = {
@@ -150,6 +173,49 @@ local function has_extra_slot(card)
         and (card.edition.card_limit or 0) > 0
 end
 
+local function is_expiring(card)
+    return card
+        and card.ability
+        and card.ability.perishable == true
+end
+
+local function is_rental(card)
+    return card
+        and card.ability
+        and card.ability.rental == true
+end
+
+local function is_mr_bones(card)
+    local name = card and card.ability and card.ability.name
+    return name == "Mr. Bones"
+end
+
+local function is_temporary(card)
+    return is_rental(card)
+        or is_expiring(card)
+        or is_mr_bones(card)
+end
+
+local function has_generic_on_sell(card)
+    return card
+        and (
+            card.on_sell ~= nil
+            or (card.ability and card.ability.on_sell ~= nil)
+            or (card.config and card.config.center and card.config.center.on_sell ~= nil)
+        )
+end
+
+local function is_named_on_sell(card)
+    local name = card and card.ability and card.ability.name
+    return name == "Diet Cola"
+        or name == "Luchador"
+        or name == "Invisible Joker"
+end
+
+local function is_on_sell(card)
+    return has_generic_on_sell(card) or is_named_on_sell(card)
+end
+
 ----------------------------------------------------------------
 -- Matching logic
 ----------------------------------------------------------------
@@ -166,6 +232,10 @@ local function matches_primary_filter(filter_name, card)
         return neg
     elseif filter_name == "extra" then
         return extra
+    elseif filter_name == "temp" then
+        return is_temporary(card)
+    elseif filter_name == "onsell" then
+        return is_on_sell(card)
     end
 
     return true
@@ -215,7 +285,7 @@ end
 
 local function jf_button_colour(filter_name)
     if get_primary_filter() == filter_name then
-        return G.C.CHIPS
+        return G.C.RED
     end
 
     return G.C.BLUE
@@ -258,6 +328,14 @@ end
 
 G.FUNCS.jf_filter_extra = function(e)
     set_primary_filter("extra")
+end
+
+G.FUNCS.jf_filter_temp = function(e)
+    set_primary_filter("temp")
+end
+
+G.FUNCS.jf_filter_onsell = function(e)
+    set_primary_filter("onsell")
 end
 
 ----------------------------------------------------------------
@@ -370,7 +448,9 @@ local function ensure_cartomancer_patch()
             row_nodes[#row_nodes + 1] = make_filter_button("all", "jf_filter_all", 1.0)
             row_nodes[#row_nodes + 1] = make_filter_button("slot", "jf_filter_slot", 1.0)
             row_nodes[#row_nodes + 1] = make_filter_button("negative", "jf_filter_negative", 1.0)
-            row_nodes[#row_nodes + 1] = make_filter_button("extra", "jf_filter_extra", 1.15)
+            row_nodes[#row_nodes + 1] = make_filter_button("extra", "jf_filter_extra", 1.1)
+            row_nodes[#row_nodes + 1] = make_filter_button("temp", "jf_filter_temp", 1.0)
+            row_nodes[#row_nodes + 1] = make_filter_button("onsell", "jf_filter_onsell", 1.25)
 
             if Cartomancer.INTERNAL_jokers_menu then
                 row_nodes[#row_nodes + 1] = {
