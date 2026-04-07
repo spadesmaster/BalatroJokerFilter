@@ -12,7 +12,7 @@
   "priority": 70,
   "badge_colour": "5B4B8A",
   "badge_text_colour": "FFFFFF",
-  "version": "0.5.5",
+  "version": "0.5.6",
   "dependencies": [
     "Steamodded (>=1.0.0~BETA-1606b)",
     "cartomancer"
