@@ -5,7 +5,7 @@
   "author": [
     "BigRed"
   ],
-  "description": "Adds Cartomancer-integrated joker filter pills for All, Slot, Neg, Extra, Temp, Retrig, Destroy, OnSell, Rarity, and Eternal.",
+  "description": "Adds Cartomancer-integrated joker filter pills for All, Slot, Neg, Extra, Temp, Retrig, Destroy, OnSell, Rarity, and Perm.",
   "prefix": "jf",
   "icon_path": "joker_filter.png",
   "main_file": "main.lua",

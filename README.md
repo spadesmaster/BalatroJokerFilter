@@ -1,7 +1,7 @@
 # Joker Filter
 
 Joker Filter is a Balatro mod that extends Cartomancer's Joker controls with compact filter pills for quickly triaging huge Joker piles.
-
+ 
 It is designed for runs where the default Joker row becomes too crowded to manage efficiently. Instead of relying on popups or hotkeys, Joker Filter adds filter buttons directly into Cartomancer's existing control strip beside the Hide/Zoom controls.
 
 ## Features
@@ -25,7 +25,7 @@ It is designed for runs where the default Joker row becomes too crowded to manag
 - **Destroy** — Jokers whose description contains active destructive wording like `destroys` or `convert all`
 - **OnSell** — Jokers with sell-trigger style effects
 - **Rarity** — a cycling pill that steps through rarity buckets from rarest to most common
-- **Eternal** — Jokers with the Eternal sticker
+- **Perm** — Jokers with the Eternal or Absolute stickers
 
 ## Requirements
 
@@ -53,4 +53,4 @@ From there you can:
 - **All** acts as the reset/default filter.
 - The rarity pill starts on the configured default rarity, or on the rarest rarity currently present when configured that way, but remains inactive until clicked.
 - Description-based filters intentionally use heuristics and may need tuning for specific mod packs.
-- Current synced file set: **0.5.2**
+- Current synced file set: **0.5.6**

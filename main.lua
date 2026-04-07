@@ -7,9 +7,10 @@ for triaging large Joker collections in Balatro.
 
 CHANGE HISTORY
 v0.5.6
-- Hardened init, config, and toolbar rebuild paths against nil state and UI errors.
-- Added lightweight logging for recoverable Joker Filter failures.
-- Added guarded fallbacks around the Cartomancer toolbar override and config UI creation.
+- Renamed the old Eternal filter/button to Perm.
+- Perm now matches either Eternal or Absolute.
+- Added Vampire-style "removes card enhancement" wording to Destroy checks.
+- Preserved the compact 3x3 config layout and Slot capacity display.
 
 DETAILS
 This version depends on Cartomancer and appends filter pills into
@@ -27,13 +28,14 @@ Temp = jokers that are Rental, Expiring/Perishable, self-destruct, or
   temporary-duration style cards such as "for the next X hands",
   "disappears after", or "reduces/decreases by X every round"
 Retrig = jokers whose description includes retrigger wording
-Destroy = jokers whose description uses the active verb "destroys"
-  or "convert all" wording, but not passive wording like "is destroyed"
+Destroy = jokers whose description uses active destructive wording such as
+  "destroys", "convert all", or "removes card enhancement", but not
+  passive wording like "is destroyed"
 OnSell = jokers with sell-trigger style effects
 Rarity = a single cycling pill that steps through rarity buckets
   from rarest to most common; starts on the configured default and
   stays blue until activated
-Eternal = jokers with the Eternal sticker
+Perm = jokers with a permanent sticker state, matching Eternal or Absolute
 
 NOTES
 Slot is the practical replace/sell candidate bucket.
@@ -42,6 +44,7 @@ Negative appears to share the same slot-related flag.
 Temp also catches self-destruction phrases such as "this card is destroyed".
 Destroy intentionally excludes self-destruction phrases, which belong in Temp.
 OnSell uses both property checks and description heuristics.
+Perm treats Eternal and Absolute as one combined permanent-status bucket.
 Special pills with a zero count are hidden automatically, while All, Slot,
 and Rarity remain visible.
 The in-game Config tab is compacted and groups Show-button toggles
@@ -51,7 +54,7 @@ Popup feedback and joker-count banners are intentionally removed.
 Individual pills can be disabled from config.lua or the in-game Mods menu.
 ]]
 
-local MOD = (SMODS and SMODS.current_mod) or nil
+local MOD = SMODS.current_mod
 
 ----------------------------------------------------------------
 -- Config helpers
@@ -77,10 +80,12 @@ end
 -- Config
 ----------------------------------------------------------------
 
-local mod_config = (MOD and MOD.config) or {}
+local mod_config = MOD.config or {}
+
+local legacy_default_primary_filter = cfg1(mod_config, "default_primary_filter", "all")
 
 local CONFIG = {
-    default_primary_filter = cfg1(mod_config, "default_primary_filter", "all"),
+    default_primary_filter = legacy_default_primary_filter == "eternal" and "perm" or legacy_default_primary_filter,
     button_scale = cfg1(mod_config, "button_scale", 0.3),
     default_rarity_cycle_index = cfg1(mod_config, "default_rarity_cycle_index", 1),
     enabled_buttons = {        slot = cfg2(mod_config, "enabled_buttons", "slot", true),
@@ -91,7 +96,7 @@ local CONFIG = {
         destroy = cfg2(mod_config, "enabled_buttons", "destroy", true),
         onsell = cfg2(mod_config, "enabled_buttons", "onsell", true),
         rarity = cfg2(mod_config, "enabled_buttons", "rarity", true),
-        eternal = cfg2(mod_config, "enabled_buttons", "eternal", true),
+        perm = cfg2(mod_config, "enabled_buttons", "perm", cfg2(mod_config, "enabled_buttons", "eternal", true)),
     },
 }
 
@@ -109,7 +114,7 @@ local FILTER_LABELS = {
     destroy = "Destroy",
     onsell = "OnSell",
     rarity = "Rarity",
-    eternal = "Eternal",
+    perm = "Perm",
 }
 
 local FILTER_OPTIONS = {
@@ -121,7 +126,7 @@ local FILTER_OPTIONS = {
     "retrigger",
     "destroy",
     "onsell",
-    "eternal",
+    "perm",
 }
 
 local FILTER_OPTION_LABELS = {
@@ -133,7 +138,7 @@ local FILTER_OPTION_LABELS = {
     "Retrig",
     "Destroy",
     "OnSell",
-    "Eternal",
+    "Perm",
 }
 
 -- Vanilla joker rarities:
@@ -156,55 +161,7 @@ local JF = {
     cartomancer_patched = false,
 }
 
-G.JF = G.JF or JF
-
-----------------------------------------------------------------
--- Logging
-----------------------------------------------------------------
-
-local LOG_TAG = "JokerFilter"
-local LOG_ONCE = {}
-
--- Sends a best-effort debug message without hard depending on one logger backend.
-local function jf_log(level, message)
-    local text = "[" .. LOG_TAG .. "][" .. tostring(level) .. "] " .. tostring(message)
-    local logged = false
-
-    if SMODS and type(SMODS.sendDebugMessage) == "function" then
-        logged = pcall(SMODS.sendDebugMessage, text, LOG_TAG)
-    end
-
-    if (not logged) and type(sendDebugMessage) == "function" then
-        logged = pcall(sendDebugMessage, text, LOG_TAG)
-    end
-
-    if (not logged) and type(print) == "function" then
-        pcall(print, text)
-    end
-end
-
--- Logs a warning once per key to avoid spamming repeated toolbar/build failures.
-local function jf_warn_once(key, message)
-    if LOG_ONCE[key] then
-        return
-    end
-
-    LOG_ONCE[key] = true
-    jf_log("WARN", message)
-end
-
--- Wraps a risky call in pcall and logs a single warning if it fails.
-local function jf_try(key, label, fn, ...)
-    local packed = {pcall(fn, ...)}
-    local ok = table.remove(packed, 1)
-
-    if not ok then
-        jf_warn_once(key, label .. " failed: " .. tostring(packed[1]))
-        return nil
-    end
-
-    return table.unpack(packed)
-end
+G.JF = JF
 
 ----------------------------------------------------------------
 -- Utility
@@ -212,45 +169,29 @@ end
 
 -- Persists the current mod config back through Steamodded.
 local function save_config()
-    if not MOD then
-        jf_warn_once("save_config_no_mod", "save_config skipped because SMODS.current_mod is unavailable.")
-        return
-    end
-
-    jf_try("save_config", "save_config", function()
+    if MOD then
         MOD.config = CONFIG
-
-        if type(MOD.save_mod_config) == "function" then
+        if MOD.save_mod_config then
             MOD:save_mod_config()
-        elseif SMODS and type(SMODS.save_mod_config) == "function" then
+        elseif SMODS and SMODS.save_mod_config then
             SMODS.save_mod_config(MOD)
         end
-    end)
+    end
 end
 
 -- Rebuilds the Cartomancer toolbar so button labels/visibility stay in sync.
 local function refresh_toolbar()
-    jf_try("refresh_toolbar", "refresh_toolbar", function()
-        if G then
-            G.JF = JF
-        end
+    if G and G.jokers and G.jokers.children and G.jokers.children.cartomancer_controls then
+        G.jokers.children.cartomancer_controls:remove()
+        G.jokers.children.cartomancer_controls = nil
+    end
 
-        if G and G.jokers and G.jokers.children and G.jokers.children.cartomancer_controls then
-            G.jokers.children.cartomancer_controls:remove()
-            G.jokers.children.cartomancer_controls = nil
-        end
-
-        if Cartomancer and type(Cartomancer.align_G_jokers) == "function" then
-            Cartomancer.align_G_jokers()
-        elseif G and G.jokers then
-            if type(G.jokers.align_cards) == "function" then
-                G.jokers:align_cards()
-            end
-            if type(G.jokers.hard_set_cards) == "function" then
-                G.jokers:hard_set_cards()
-            end
-        end
-    end)
+    if Cartomancer and Cartomancer.align_G_jokers then
+        Cartomancer.align_G_jokers()
+    elseif G and G.jokers then
+        G.jokers:align_cards()
+        G.jokers:hard_set_cards()
+    end
 end
 
 ----------------------------------------------------------------
@@ -421,6 +362,26 @@ local function has_eternal(card)
         and card.ability.eternal == true
 end
 
+-- Detects whether a Joker has the Absolute sticker/state.
+local function has_absolute(card)
+    return card and (
+        (card.ability and (card.ability.cry_absolute == true or card.ability.absolute == true))
+        or (card.config and card.config.center and (
+            card.config.center.cry_absolute == true
+            or card.config.center.absolute == true
+            or (card.config.center.config and (
+                card.config.center.config.cry_absolute == true
+                or card.config.center.config.absolute == true
+            ))
+        ))
+    )
+end
+
+-- Detects whether a Joker belongs in the combined permanent-status bucket.
+local function has_perm(card)
+    return has_eternal(card) or has_absolute(card)
+end
+
 -- Returns a Joker's rarity key from its center config.
 local function get_joker_rarity(card)
     return card and card.config and card.config.center and card.config.center.rarity
@@ -558,6 +519,8 @@ local RETRIGGER_PATTERNS = {
 local DESTROY_PATTERNS = {
     " destroys ",
     " convert all ",
+    " removes card enhancement ",
+    " removes card enhancements ",
 }
 
 -- Returns true when any normalized pattern appears in the Joker description blob.
@@ -687,8 +650,8 @@ local function matches_primary_filter(filter_name, card)
         return is_on_sell(card)
     elseif filter_name == "rarity" then
         return matches_current_rarity(card)
-    elseif filter_name == "eternal" then
-        return has_eternal(card)
+    elseif filter_name == "perm" then
+        return has_perm(card)
     end
 
     return true
@@ -881,22 +844,20 @@ local function get_default_filter_option_index()
 end
 
 G.FUNCS.jf_config_default_filter = function(e)
-    local idx = e and e.to_key
-    CONFIG.default_primary_filter = FILTER_OPTIONS[idx] or "all"
+    CONFIG.default_primary_filter = FILTER_OPTIONS[e.to_key] or "all"
     save_config()
     refresh_toolbar()
 end
 
 G.FUNCS.jf_config_button_scale = function(e)
     local values = {0.25, 0.3, 0.35, 0.4}
-    local idx = e and e.to_key
-    CONFIG.button_scale = values[idx] or 0.3
+    CONFIG.button_scale = values[e.to_key] or 0.3
     save_config()
     refresh_toolbar()
 end
 
 G.FUNCS.jf_config_rarity_default = function(e)
-    CONFIG.default_rarity_cycle_index = (e and e.to_key) or 1
+    CONFIG.default_rarity_cycle_index = e.to_key or 1
     save_config()
     reset_rarity_cycle_to_rarest_available()
     refresh_toolbar()
@@ -904,18 +865,6 @@ end
 
 -- Builds one config-tab toggle node for show/hide button settings.
 local function make_toggle_node(label, ref_value)
-    if type(create_toggle) ~= "function" then
-        jf_warn_once("missing_create_toggle", "Config tab fallback is active because create_toggle is unavailable.")
-        return {
-            n = G.UIT.T,
-            config = {
-                text = label,
-                scale = 0.45,
-                colour = G.C.RED
-            }
-        }
-    end
-
     return create_toggle({
         label = label,
         ref_table = CONFIG.enabled_buttons,
@@ -931,58 +880,7 @@ end
 This config tab mirrors the file-based config so users can change the default
 filter, button scale, rarity default, and visible pills without leaving the game.
 ]]
-if MOD then
 MOD.config_tab = function()
-    if not (G and G.UIT and G.C) then
-        jf_warn_once("config_tab_no_ui_state", "Config tab opened before UI globals were ready.")
-        return {
-            n = G.UIT.ROOT,
-            config = {
-                emboss = 0.05,
-                minh = 2,
-                minw = 8,
-                r = 0.1,
-                align = "cm",
-                padding = 0.2,
-                colour = G.C.BLACK
-            },
-            nodes = {
-                {
-                    n = G.UIT.R,
-                    config = {align = "cm", padding = 0.08},
-                    nodes = {
-                        {n = G.UIT.T, config = {text = "Config UI unavailable", scale = 0.6, colour = G.C.RED}}
-                    }
-                }
-            }
-        }
-    end
-
-    if type(create_option_cycle) ~= "function" then
-        jf_warn_once("missing_create_option_cycle", "Config tab fallback is active because create_option_cycle is unavailable.")
-        return {
-            n = G.UIT.ROOT,
-            config = {
-                emboss = 0.05,
-                minh = 2,
-                minw = 8,
-                r = 0.1,
-                align = "cm",
-                padding = 0.2,
-                colour = G.C.BLACK
-            },
-            nodes = {
-                {
-                    n = G.UIT.R,
-                    config = {align = "cm", padding = 0.08},
-                    nodes = {
-                        {n = G.UIT.T, config = {text = "Option widgets unavailable", scale = 0.6, colour = G.C.RED}}
-                    }
-                }
-            }
-        }
-    end
-
     local function toggle_cell(label, ref_value)
         return {
             n = G.UIT.C,
@@ -1034,7 +932,7 @@ MOD.config_tab = function()
         {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {
             toggle_cell("Show OnSell", "onsell"),
             toggle_cell("Show Rarity", "rarity"),
-            toggle_cell("Show Eternal", "eternal"),
+            toggle_cell("Show Perm", "perm"),
         }},
     }
 
@@ -1051,10 +949,6 @@ MOD.config_tab = function()
         },
         nodes = rows
     }
-end
-
-else
-    jf_warn_once("no_mod_config_tab", "Config tab not registered because SMODS.current_mod is unavailable.")
 end
 
 
@@ -1104,9 +998,9 @@ G.FUNCS.jf_filter_onsell = function(e)
     set_primary_filter("onsell")
 end
 
--- Activates the Eternal filter.
-G.FUNCS.jf_filter_eternal = function(e)
-    set_primary_filter("eternal")
+-- Activates the Perm filter.
+G.FUNCS.jf_filter_perm = function(e)
+    set_primary_filter("perm")
 end
 
 -- Activates the Rarity filter and advances it when clicked while already active.
@@ -1164,7 +1058,7 @@ local function get_toolbar_signature()
         tostring(count_primary_matches("retrigger")),
         tostring(count_primary_matches("destroy")),
         tostring(count_primary_matches("onsell")),
-        tostring(count_primary_matches("eternal")),
+        tostring(count_primary_matches("perm")),
         tostring(get_rarity_cycle_index()),
         tostring(get_primary_filter()),
     }, "|")
@@ -1186,121 +1080,89 @@ local function ensure_cartomancer_patch()
     end
 
     if not (Cartomancer and type(Cartomancer.add_visibility_controls) == "function") then
-        jf_warn_once("missing_cartomancer", "Cartomancer toolbar hooks are unavailable; Joker Filter controls were not patched.")
         return
     end
 
-    local original_add_visibility_controls = Cartomancer.add_visibility_controls
-
     Cartomancer.add_visibility_controls = function()
-        local ok, err = pcall(function()
-            if not (G and G.jokers) then
-                return
+        if not G.jokers then
+            return
+        end
+
+        if G and G.GAME and G.GAME.jf_rarity_cycle_index == nil then
+            reset_rarity_cycle_to_rarest_available()
+        end
+
+        local toolbar_signature = get_toolbar_signature()
+
+        if G.jokers.jf_toolbar_signature ~= toolbar_signature then
+            G.jokers.jf_toolbar_signature = toolbar_signature
+
+            if G.jokers.children.cartomancer_controls then
+                G.jokers.children.cartomancer_controls:remove()
+                G.jokers.children.cartomancer_controls = nil
+            end
+        end
+
+        if not (Cartomancer.SETTINGS.jokers_controls_buttons
+            and #G.jokers.cards >= Cartomancer.SETTINGS.jokers_controls_show_after) then
+            G.jokers.cart_jokers_expanded = false
+
+            if G.jokers.children.cartomancer_controls then
+                Cartomancer.align_G_jokers()
             end
 
-            G.JF = G.JF or JF
+            return
+        end
 
-            if G and G.GAME and G.GAME.jf_rarity_cycle_index == nil then
-                reset_rarity_cycle_to_rarest_available()
+        if not G.jokers.children.cartomancer_controls then
+            local settings = Sprite(0, 0, 0.425, 0.425, G.ASSET_ATLAS["cart_settings"], { x = 0, y = 0 })
+            settings.states.drag.can = false
+
+            local joker_slider = nil
+            if G.jokers.cart_jokers_expanded then
+                joker_slider = create_slider({
+                    id = "joker_slider",
+                    w = 6,
+                    h = 0.4,
+                    ref_table = G.jokers,
+                    ref_value = "cart_zoom_slider",
+                    min = 0,
+                    max = 100,
+                    decimal_places = 1,
+                    hide_val = true,
+                    colour = G.C.CHIPS,
+                })
+                joker_slider.config.padding = 0
             end
 
-            local toolbar_signature = get_toolbar_signature()
+            local row_nodes = {}
 
-            if G.jokers.jf_toolbar_signature ~= toolbar_signature then
-                G.jokers.jf_toolbar_signature = toolbar_signature
-
-                if G.jokers.children and G.jokers.children.cartomancer_controls then
-                    G.jokers.children.cartomancer_controls:remove()
-                    G.jokers.children.cartomancer_controls = nil
-                end
-            end
-
-            local settings_enabled = Cartomancer.SETTINGS
-                and Cartomancer.SETTINGS.jokers_controls_buttons
-                and G.jokers.cards
-                and #G.jokers.cards >= (Cartomancer.SETTINGS.jokers_controls_show_after or 0)
-
-            if not settings_enabled then
-                G.jokers.cart_jokers_expanded = false
-
-                if G.jokers.children and G.jokers.children.cartomancer_controls and type(Cartomancer.align_G_jokers) == "function" then
-                    Cartomancer.align_G_jokers()
-                end
-
-                return
-            end
-
-            if G.jokers.children and not G.jokers.children.cartomancer_controls then
-                local settings = nil
-                if G.ASSET_ATLAS and G.ASSET_ATLAS["cart_settings"] then
-                    settings = Sprite(0, 0, 0.425, 0.425, G.ASSET_ATLAS["cart_settings"], { x = 0, y = 0 })
-                    settings.states.drag.can = false
-                end
-
-                local joker_slider = nil
-                if G.jokers.cart_jokers_expanded and type(create_slider) == "function" then
-                    joker_slider = create_slider({
-                        id = "joker_slider",
-                        w = 6,
-                        h = 0.4,
-                        ref_table = G.jokers,
-                        ref_value = "cart_zoom_slider",
-                        min = 0,
-                        max = 100,
-                        decimal_places = 1,
-                        hide_val = true,
-                        colour = G.C.CHIPS,
-                    })
-                    if joker_slider and joker_slider.config then
-                        joker_slider.config.padding = 0
-                    end
-                end
-
-                local row_nodes = {}
-
-                if G.jokers.cart_hide_all then
-                    row_nodes[#row_nodes + 1] = {
-                        n = G.UIT.C,
-                        config = { align = "cm" },
-                        nodes = {
-                            UIBox_button({
-                                id = "show_all_jokers",
-                                button = "cartomancer_show_all_jokers",
-                                label = { localize("carto_jokers_show") },
-                                minh = 0.45,
-                                minw = 1,
-                                col = false,
-                                scale = 0.3,
-                                colour = G.C.CHIPS,
-                            })
-                        }
-                    }
-                else
-                    row_nodes[#row_nodes + 1] = {
-                        n = G.UIT.C,
-                        config = { align = "cm" },
-                        nodes = {
-                            UIBox_button({
-                                id = "hide_all_jokers",
-                                button = "cartomancer_hide_all_jokers",
-                                label = { localize("carto_jokers_hide") },
-                                minh = 0.45,
-                                minw = 1,
-                                col = false,
-                                scale = 0.3,
-                            })
-                        }
-                    }
-                end
-
+            if G.jokers.cart_hide_all then
                 row_nodes[#row_nodes + 1] = {
                     n = G.UIT.C,
                     config = { align = "cm" },
                     nodes = {
                         UIBox_button({
-                            id = "zoom_jokers",
-                            button = "cartomancer_zoom_jokers",
-                            label = { localize("carto_jokers_zoom") },
+                            id = "show_all_jokers",
+                            button = "cartomancer_show_all_jokers",
+                            label = { localize("carto_jokers_show") },
+                            minh = 0.45,
+                            minw = 1,
+                            col = false,
+                            scale = 0.3,
+                            colour = G.C.CHIPS,
+                        })
+                    }
+                }
+            else
+                row_nodes[#row_nodes + 1] = {
+                    n = G.UIT.C,
+                    config = { align = "cm" },
+                    nodes = {
+                        UIBox_button({
+                            id = "hide_all_jokers",
+                            button = "cartomancer_hide_all_jokers",
+                            label = { localize("carto_jokers_hide") },
                             minh = 0.45,
                             minw = 1,
                             col = false,
@@ -1308,106 +1170,112 @@ local function ensure_cartomancer_patch()
                         })
                     }
                 }
+            end
 
-                if joker_slider then
-                    row_nodes[#row_nodes + 1] = joker_slider
-                end
+            row_nodes[#row_nodes + 1] = {
+                n = G.UIT.C,
+                config = { align = "cm" },
+                nodes = {
+                    UIBox_button({
+                        id = "zoom_jokers",
+                        button = "cartomancer_zoom_jokers",
+                        label = { localize("carto_jokers_zoom") },
+                        minh = 0.45,
+                        minw = 1,
+                        col = false,
+                        scale = 0.3,
+                    })
+                }
+            }
 
-                if should_show_filter_button("all") then
-                    row_nodes[#row_nodes + 1] = make_filter_button("all", "jf_filter_all", 1.0)
-                end
-                if should_show_filter_button("slot") then
-                    row_nodes[#row_nodes + 1] = make_filter_button("slot", "jf_filter_slot", 2.35)
-                end
-                if should_show_filter_button("negative") then
-                    row_nodes[#row_nodes + 1] = make_filter_button("negative", "jf_filter_negative", 1.0)
-                end
-                if should_show_filter_button("extra") then
-                    row_nodes[#row_nodes + 1] = make_filter_button("extra", "jf_filter_extra", 1.1)
-                end
-                if should_show_filter_button("temp") then
-                    row_nodes[#row_nodes + 1] = make_filter_button("temp", "jf_filter_temp", 1.0)
-                end
-                if should_show_filter_button("retrigger") then
-                    row_nodes[#row_nodes + 1] = make_filter_button("retrigger", "jf_filter_retrigger", 1.2)
-                end
-                if should_show_filter_button("destroy") then
-                    row_nodes[#row_nodes + 1] = make_filter_button("destroy", "jf_filter_destroy", 1.35)
-                end
-                if should_show_filter_button("onsell") then
-                    row_nodes[#row_nodes + 1] = make_filter_button("onsell", "jf_filter_onsell", 1.25)
-                end
-                if should_show_filter_button("rarity") then
-                    row_nodes[#row_nodes + 1] = make_rarity_button("jf_cycle_rarity", 1.3)
-                end
-                if should_show_filter_button("eternal") then
-                    row_nodes[#row_nodes + 1] = make_filter_button("eternal", "jf_filter_eternal", 1.35)
-                end
+            if joker_slider then
+                row_nodes[#row_nodes + 1] = joker_slider
+            end
 
-                if Cartomancer.INTERNAL_jokers_menu and settings then
-                    row_nodes[#row_nodes + 1] = {
-                        n = G.UIT.C,
-                        config = { align = "cm" },
-                        nodes = {
-                            {
-                                n = G.UIT.C,
-                                config = {
-                                    align = "cm",
-                                    padding = 0.01,
-                                    r = 0.1,
-                                    hover = true,
-                                    colour = G.C.BLUE,
-                                    button = "cartomancer_joker_visibility_settings",
-                                    shadow = true
-                                },
-                                nodes = {
-                                    { n = G.UIT.O, config = { object = settings } },
-                                }
+            if should_show_filter_button("all") then
+                row_nodes[#row_nodes + 1] = make_filter_button("all", "jf_filter_all", 1.0)
+            end
+            if should_show_filter_button("slot") then
+                row_nodes[#row_nodes + 1] = make_filter_button("slot", "jf_filter_slot", 2.35)
+            end
+            if should_show_filter_button("negative") then
+                row_nodes[#row_nodes + 1] = make_filter_button("negative", "jf_filter_negative", 1.0)
+            end
+            if should_show_filter_button("extra") then
+                row_nodes[#row_nodes + 1] = make_filter_button("extra", "jf_filter_extra", 1.1)
+            end
+            if should_show_filter_button("temp") then
+                row_nodes[#row_nodes + 1] = make_filter_button("temp", "jf_filter_temp", 1.0)
+            end
+            if should_show_filter_button("retrigger") then
+                row_nodes[#row_nodes + 1] = make_filter_button("retrigger", "jf_filter_retrigger", 1.2)
+            end
+            if should_show_filter_button("destroy") then
+                row_nodes[#row_nodes + 1] = make_filter_button("destroy", "jf_filter_destroy", 1.35)
+            end
+            if should_show_filter_button("onsell") then
+                row_nodes[#row_nodes + 1] = make_filter_button("onsell", "jf_filter_onsell", 1.25)
+            end
+            if should_show_filter_button("rarity") then
+                row_nodes[#row_nodes + 1] = make_rarity_button("jf_cycle_rarity", 1.3)
+            end
+            if should_show_filter_button("perm") then
+                row_nodes[#row_nodes + 1] = make_filter_button("perm", "jf_filter_perm", 1.35)
+            end
+
+            if Cartomancer.INTERNAL_jokers_menu then
+                row_nodes[#row_nodes + 1] = {
+                    n = G.UIT.C,
+                    config = { align = "cm" },
+                    nodes = {
+                        {
+                            n = G.UIT.C,
+                            config = {
+                                align = "cm",
+                                padding = 0.01,
+                                r = 0.1,
+                                hover = true,
+                                colour = G.C.BLUE,
+                                button = "cartomancer_joker_visibility_settings",
+                                shadow = true
                             },
-                        }
-                    }
-                end
-
-                G.jokers.children.cartomancer_controls = UIBox{
-                    definition = {
-                        n = G.UIT.ROOT,
-                        config = {
-                            align = "cm",
-                            padding = 0.07,
-                            colour = G.C.CLEAR,
-                        },
-                        nodes = {
-                            {
-                                n = G.UIT.R,
-                                config = {
-                                    align = "tm",
-                                    padding = 0.07,
-                                    no_fill = true
-                                },
-                                nodes = row_nodes
+                            nodes = {
+                                { n = G.UIT.O, config = { object = settings } },
                             }
-                        }
-                    },
-                    config = {
-                        align = "t",
-                        bond = "Strong",
-                        parent = G.jokers
-                    },
+                        },
+                    }
                 }
             end
 
-            if G.jokers.children and G.jokers.children.cartomancer_controls then
-                G.jokers.children.cartomancer_controls:draw()
-            end
-        end)
-
-        if not ok then
-            jf_warn_once("toolbar_patch_failure", "Cartomancer toolbar override failed: " .. tostring(err))
-
-            if type(original_add_visibility_controls) == "function" then
-                jf_try("toolbar_patch_fallback", "original Cartomancer.add_visibility_controls", original_add_visibility_controls)
-            end
+            G.jokers.children.cartomancer_controls = UIBox{
+                definition = {
+                    n = G.UIT.ROOT,
+                    config = {
+                        align = "cm",
+                        padding = 0.07,
+                        colour = G.C.CLEAR,
+                    },
+                    nodes = {
+                        {
+                            n = G.UIT.R,
+                            config = {
+                                align = "tm",
+                                padding = 0.07,
+                                no_fill = true
+                            },
+                            nodes = row_nodes
+                        }
+                    }
+                },
+                config = {
+                    align = "t",
+                    bond = "Strong",
+                    parent = G.jokers
+                },
+            }
         end
+
+        G.jokers.children.cartomancer_controls:draw()
     end
 
     JF.cartomancer_patched = true
@@ -1424,8 +1292,7 @@ local original_card_draw = Card.draw
 function Card:draw(...)
     ensure_cartomancer_patch()
 
-    local hidden = jf_try("card_draw_should_hide", "should_hide(Card:draw)", should_hide, self)
-    if hidden then
+    if should_hide(self) then
         return
     end
 
@@ -1442,8 +1309,7 @@ local original_card_click = Card.click
 function Card:click(...)
     ensure_cartomancer_patch()
 
-    local hidden = jf_try("card_click_should_hide", "should_hide(Card:click)", should_hide, self)
-    if hidden then
+    if should_hide(self) then
         return
     end
 

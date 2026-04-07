@@ -3,6 +3,10 @@
 ## Goal
 A Balatro mod that supplements Cartomancer by adding compact filter pills directly into Cartomancer’s Joker controls row so very large Joker piles can be triaged quickly during modded runs.
 
+## Current status
+Current testing went well and the core feature set appears stable.
+The recent `handnil/cardnil/timenil` issue did **not** appear to come from Joker Filter; likely suspects were other mods touching text/UI generation, especially Talisman or Cryptid.
+
 ## Integration model
 - Depends on `cartomancer`
 - Overrides `Cartomancer.add_visibility_controls()`
@@ -10,37 +14,40 @@ A Balatro mod that supplements Cartomancer by adding compact filter pills direct
 - Filters Jokers by suppressing draw in `Card:draw()` and interaction in `Card:click()`
 
 ## Current filters
-- **All**: show all Jokers and reset rarity to the rarest available
-- **Slot**: not Negative and not Extra
+- **All**: show all Jokers and reset rarity to the configured default / rarest available
+- **Slot**: not Negative and not Extra; label shows current count plus free/over capacity
 - **Neg**: Negative Jokers
 - **Extra**: explicit extra-slot/card-limit Jokers, excluding Negative
 - **Temp**: rental, perishable/expiring, self-destruct, and tightly-scoped duration/decay text
 - **Retrig**: description contains retrigger wording
-- **Destroy**: description contains active `destroys` or `convert all`, but not self-destruction wording
+- **Destroy**: description contains active `destroys`, `convert all`, and Vampire-style enhancement-removal wording, but not self-destruction wording
 - **OnSell**: sell-trigger style effects via property or text
 - **Rarity**: cycling pill from rarest to common
-- **Eternal**: Eternal sticker only
+- **Perm**: matches either Eternal or Absolute
 
 ## Current color behavior
 - active pill = red
 - inactive pills = blue
 - rarity starts blue until activated
-- eternal starts blue until activated
+- perm starts blue until activated
+
+## Current visibility behavior
+- **All**, **Slot**, and **Rarity** stay visible
+- special pills hide automatically when their live count is `0`
+- Slot button was widened for readability, then reduced slightly from the oversized version
 
 ## Current config behavior
 There are two config paths:
 - `config.lua`
 - in-game Steamodded **Config** tab
 
-`config.lua` supports:
-
+Config supports:
 ```lua
 default_primary_filter = "all"
 button_scale = 0.3
 default_rarity_cycle_index = 1
 
 enabled_buttons = {
-  all = true,
   slot = true,
   negative = true,
   extra = true,
@@ -49,9 +56,23 @@ enabled_buttons = {
   destroy = true,
   onsell = true,
   rarity = true,
-  eternal = true,
+  perm = true,
 }
 ```
+
+Notes:
+- `Show All` was removed as a config option; All should always be visible
+- config retention in-game was confirmed working
+- old configs using `eternal` should still map into the new `perm` concept if that compatibility code is present in the active Lua
+
+## Current config-tab behavior
+- compact layout
+- show-button toggles grouped 3 per row
+- users can set:
+  - default filter
+  - button scale
+  - default rarity behavior
+  - individual pill visibility
 
 ## Current rarity behavior
 - rarity cycle order:
@@ -64,6 +85,16 @@ enabled_buttons = {
 - rarity defaults to the rarest rarity currently present if `default_rarity_cycle_index = 1`
 - clicking **All** resets rarity to the configured default / rarest-available behavior
 - rarity only becomes active after clicking the rarity pill
+
+## Current Slot behavior
+Slot label should show:
+- `count (x free)` when there is remaining capacity
+- `count (x over)` when Joker count exceeds capacity
+
+This is based on:
+- current Slot joker count
+- Joker area used slots
+- Joker area total slots
 
 ## Current text heuristics
 
@@ -99,6 +130,8 @@ Avoid broad matches like raw `every round` or `every blind` because they caused 
 ### Destroy patterns
 - `destroys`
 - `convert all`
+- `removes card enhancement`
+- `removes card enhancements`
 
 Important:
 - Destroy must **not** catch passive phrases like `when a card is destroyed`
@@ -133,25 +166,28 @@ Use both property checks and text patterns:
   - `main.lua`
   - changelog
   - JSON metadata
+- Do **not** bump the version for comment-only changes or packaging-file-only changes
 
 ## File-generation preferences
 When generating future updates:
 - generate the **full Lua file**
 - preserve the user’s top description/comment block
 - keep the header clean with the version number
+- use one large block-style comment at the top when requested
+- keep headings like `DETAILS`, `PILLS`, and `NOTES` in all caps
 - update **Details** and **Notes** as needed
 - avoid extra cluttered `--` indentation in those sections
+- add one-line comments above functions and block comments around large/obscure sections when maintainability work is requested
 
 ## Recent decisions worth remembering
-- Absolute support was dropped
-- sticker cycle was replaced with a plain Eternal pill
-- config toggles were added for individual pills
-- config was also surfaced in the in-game Mods menu via `config_tab`
-- Destruct was renamed to Destroy
-- README / changelog / context were refreshed to reflect in-game config
-- Extra needed explicit Negative exclusion
-- Slot label should show slot count plus free/over capacity information
-- user wants version bumping kept synchronized automatically
+- Absolute as a separate visible filter was dropped
+- Eternal was replaced by **Perm**
+- **Perm** should cover both Eternal and Absolute
+- Destruct was renamed to **Destroy**
+- Show All was removed from config because All should always be visible
+- config settings were confirmed to persist correctly
+- the handnil/cardnil/timenil issue did not appear to be caused by Joker Filter
+- submit/meta-style Mod Index files should not live inside the active installed mod folder
 
 ## Next steps
 ### 1) Build an agent-driven workflow for this project
@@ -164,7 +200,6 @@ Recommended direction:
   - regenerate README / changelog / context
   - package release files
   - validate JSON syntax before handoff
-- keep this as a repeatable command-driven workflow instead of ad hoc chat/manual steps
 
 ### 2) JetBrains integration
 High-priority future improvement:
@@ -213,8 +248,8 @@ Future automation target:
 - optionally zip output for release in one command
 
 ## Likely future work
-- confirm Extra behavior in live runs since Negative seems to share slot-related internals
-- possibly split pills into grouped rows if toolbar gets too crowded
-- maybe add other sticker filters later if they prove useful
+- continue hardening around Cartomancer upstream changes
+- confirm live behavior of Perm/Absolute in more edge cases
+- maybe split pills into grouped rows if toolbar gets too crowded
 - maybe make some heuristics mod-pack specific if false positives appear
 - move the project toward a cleaner JetBrains-centered professional workflow
