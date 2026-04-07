@@ -2,17 +2,19 @@
   "id": "joker_filter",
   "name": "Joker Filter",
   "display_name": "Joker Filter",
-  "author": ["BigRed"],
-  "description": "Adds Cartomancer-integrated joker filter pills for All, Slot, Neg, and Extra.",
+  "author": [
+    "BigRed"
+  ],
+  "description": "Adds Cartomancer-integrated joker filter pills for All, Slot, Neg, Extra, Temp, Retrig, Destroy, OnSell, Rarity, and Eternal.",
   "prefix": "jf",
   "icon_path": "joker_filter.png",
   "main_file": "main.lua",
   "priority": 70,
   "badge_colour": "5B4B8A",
   "badge_text_colour": "FFFFFF",
-  "version": "0.3.0",
+  "version": "0.5.5",
   "dependencies": [
     "Steamodded (>=1.0.0~BETA-1606b)",
-	 "cartomancer"
+    "cartomancer"
   ]
 }

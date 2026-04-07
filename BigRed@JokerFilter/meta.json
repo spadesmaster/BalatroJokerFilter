@@ -1,0 +1,12 @@
+{
+  "title": "Joker Filter",
+  "requires-steamodded": true,
+  "requires-talisman": false,
+  "categories": ["QoL", "UI", "Joker"],
+  "author": "BigRed",
+  "repo": "https://github.com/spadesmaster/BalatroJokerFilter",
+  "downloadURL": "https://github.com/spadesmaster/BalatroJokerFilter/releases/latest/download/JokerFilter.zip",
+  "folderName": "JokerFilter",
+  "version": "0.5.5",
+  "automatic-version-check": true
+}

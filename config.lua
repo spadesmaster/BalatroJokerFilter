@@ -1,8 +1,18 @@
 return {
-    -- Default pill state when no per-run state has been set yet.
-    -- Valid values: "all", "slot", "negative", "extra"
     default_primary_filter = "all",
-
-    -- Visual scale for the pills we append to Cartomancer's row.
     button_scale = 0.3,
+    default_rarity_cycle_index = 1,
+
+    enabled_buttons = {
+        all = true,
+        slot = true,
+        negative = true,
+        extra = true,
+        temp = true,
+        retrigger = true,
+        destroy = true,
+        onsell = true,
+        rarity = true,
+        eternal = true,
+    }
 }
