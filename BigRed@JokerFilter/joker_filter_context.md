@@ -253,3 +253,26 @@ Future automation target:
 - maybe split pills into grouped rows if toolbar gets too crowded
 - maybe make some heuristics mod-pack specific if false positives appear
 - move the project toward a cleaner JetBrains-centered professional workflow
+
+## Bug Fixes
+A dedicated section at the end of `main.lua` handles forced unlocks and discoveries for items where the game's natural logic fails (e.g., due to mod interactions or bugged stat tracking). This was specifically implemented to fix the bugged Palette and Blank Canvas unlocks.
+
+### Mechanism
+- Hooks into `Game:main_menu()` to ensure fixes apply after the profile is fully loaded.
+- Uses a local `apply_bug_fixes()` function to iterate through a list of IDs.
+- For each ID, it sets `unlocked = true` and `discovered = true`, then calls `discover_card()` and `unlock_card()`.
+
+### Currently Handled
+- `v_palette` (Palette Voucher)
+- `v_cry_blankcanvas` (Blank Canvas Voucher)
+- `v_cry_clone_machine` (Clone Machine Voucher)
+
+### How to use
+To enable the fix:
+1. Locate the  function in .
+2. Set .
+
+To fix a new bugged item:
+1. Locate the `apply_bug_fixes()` function in `main.lua`.
+2. Add the internal ID (e.g., `'v_palette'`, `'j_joker'`) to the `vouchers` list.
+3. Restart the game and enter the main menu.

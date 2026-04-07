@@ -1320,6 +1320,46 @@ end
 
 ----------------------------------------------------------------
 -- Initial patch attempt
+
+----------------------------------------------------------------
+-- Bug Fixes
+----------------------------------------------------------------
+
+-- Forces bugged unlocks/discoveries to register.
+local function apply_bug_fixes()
+    local force_unlocks = false -- Set to true to force bugged voucher unlocks
+    if not force_unlocks or not G.P_CENTERS then return end
+    
+    local vouchers = {
+        'v_palette',
+        'v_cry_blankcanvas',
+        'v_cry_clone_machine',
+    }
+    
+    for _, id in ipairs(vouchers) do
+        local center = G.P_CENTERS[id]
+        if center and (not center.unlocked or not center.discovered) then
+            center.unlocked = true
+            center.discovered = true
+            discover_card(center)
+            unlock_card(center)
+            if sendDebugMessage then 
+                sendDebugMessage("JokerFilter: Applied bug fix for " .. id) 
+            end
+        end
+    end
+end
+
+-- Hook main_menu to ensure fixes apply after profile load.
+local game_main_menu_ref = Game.main_menu
+function Game:main_menu()
+    local res = game_main_menu_ref(self)
+    apply_bug_fixes()
+    return res
+end
+
+----------------------------------------------------------------
+-- Initial patch attempt
 ----------------------------------------------------------------
 
 ensure_cartomancer_patch()
